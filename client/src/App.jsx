@@ -172,7 +172,7 @@ function App() {
     };
 
     try {
-      const response = await fetch("http://localhost:5000/book", {
+      const response = await fetch("https://medislot-imbs.onrender.com/book", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
