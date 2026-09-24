@@ -392,12 +392,13 @@ function App() {
 
     try {
       const response = await fetch(`${API_URL}/book`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(appointment),
-      });
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+  },
+  body: JSON.stringify(appointment),
+});
 
       const data = await response.json();
 
