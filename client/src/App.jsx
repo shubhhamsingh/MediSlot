@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
+
+const API_URL = "https://medislot-imbs.onrender.com";
 
 const doctors = [
   {
@@ -7,83 +9,208 @@ const doctors = [
     name: "Dr. Ananya Sharma",
     specialty: "General Physician",
     experience: "8+ Years",
-    rating: "4.9",
-    patients: "2,500+",
-    timings: ["10:00 AM", "11:30 AM", "2:00 PM", "4:30 PM"],
+    rating: 4.9,
+    fee: 500,
     image:
-      "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=500&q=80",
+      "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=900&q=90",
+    initials: "AS",
     description:
-      "Experienced general physician providing comprehensive healthcare, preventive care and routine consultations.",
+      "Experienced physician focused on preventive care, diagnosis and complete family healthcare.",
   },
   {
     id: 2,
     name: "Dr. Rahul Mehta",
     specialty: "Dermatologist",
     experience: "10+ Years",
-    rating: "4.8",
-    patients: "3,200+",
-    timings: ["9:30 AM", "12:00 PM", "3:00 PM", "5:30 PM"],
+    rating: 4.8,
+    fee: 700,
     image:
-      "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=500&q=80",
+      "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=900&q=90",
+    initials: "RM",
     description:
-      "Specialist in skin, hair and nail conditions with a patient-focused approach to dermatological care.",
+      "Specialist in skin, hair and cosmetic dermatology with patient-focused treatment.",
   },
   {
     id: 3,
     name: "Dr. Arjun Kapoor",
     specialty: "Cardiologist",
     experience: "12+ Years",
-    rating: "4.9",
-    patients: "4,100+",
-    timings: ["10:30 AM", "1:00 PM", "3:30 PM", "6:00 PM"],
+    rating: 4.9,
+    fee: 900,
     image:
-      "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=500&q=80",
+      "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=900&q=90",
+    initials: "AK",
     description:
-      "Cardiovascular specialist focused on heart health, diagnosis, prevention and long-term patient care.",
+      "Cardiology specialist providing comprehensive heart-health consultation and care.",
   },
 ];
 
 const specialties = [
   {
+    name: "General Physician",
     icon: "🩺",
-    title: "General Physician",
-    text: "Everyday healthcare and preventive consultations.",
+    description: "Everyday health & preventive care",
   },
   {
+    name: "Dermatology",
     icon: "✨",
-    title: "Dermatology",
-    text: "Expert care for skin, hair and nail conditions.",
+    description: "Skin, hair & cosmetic care",
   },
   {
+    name: "Cardiology",
     icon: "❤️",
-    title: "Cardiology",
-    text: "Specialized consultation for heart health.",
+    description: "Heart & cardiovascular care",
   },
 ];
 
+const timeSlots = [
+  "09:00 AM",
+  "10:00 AM",
+  "11:00 AM",
+  "12:00 PM",
+  "02:00 PM",
+  "03:00 PM",
+  "04:00 PM",
+  "05:00 PM",
+];
+
 function App() {
-  const [mobileMenu, setMobileMenu] = useState(false);
+  const [activeSection, setActiveSection] = useState("home");
+
   const [search, setSearch] = useState("");
-  const [specialtyFilter, setSpecialtyFilter] = useState("All Specialties");
+  const [specialty, setSpecialty] = useState("All");
+
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+
+  const [showBooking, setShowBooking] = useState(false);
+  const [showAppointments, setShowAppointments] = useState(false);
 
   const [selectedDoctor, setSelectedDoctor] = useState(null);
-  const [bookingOpen, setBookingOpen] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [appointments, setAppointments] = useState([]);
+  const [selectedSlot, setSelectedSlot] = useState("");
+
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("medislot_user")) || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [token, setToken] = useState(
+    localStorage.getItem("medislot_token") || ""
+  );
+
+  const [authForm, setAuthForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+  });
 
   const [bookingForm, setBookingForm] = useState({
     name: "",
     email: "",
     phone: "",
     date: "",
-    time: "",
-    consultation: "Clinic Visit",
     symptoms: "",
   });
 
-  const scrollToSection = (id) => {
-    const element = document.getElementById(id);
+  const [appointments, setAppointments] = useState([]);
+  const [loadingAppointments, setLoadingAppointments] = useState(false);
+
+  const [availability, setAvailability] = useState({});
+  const [serverOnline, setServerOnline] = useState(false);
+
+  const [toast, setToast] = useState({
+    show: false,
+    type: "success",
+    message: "",
+  });
+
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
+
+  const showToast = (message, type = "success") => {
+    setToast({
+      show: true,
+      type,
+      message,
+    });
+
+    setTimeout(() => {
+      setToast({
+        show: false,
+        type: "success",
+        message: "",
+      });
+    }, 3000);
+  };
+
+  useEffect(() => {
+    const checkServer = async () => {
+      try {
+        const response = await fetch(`${API_URL}/`, {
+          method: "GET",
+        });
+
+        setServerOnline(response.ok);
+      } catch {
+        setServerOnline(false);
+      }
+    };
+
+    checkServer();
+
+    const interval = setInterval(checkServer, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!bookingForm.date || !selectedDoctor) {
+      setAvailability({});
+      return;
+    }
+
+    const key = `${selectedDoctor.id}-${bookingForm.date}`;
+
+    try {
+      const bookedSlots = JSON.parse(
+        localStorage.getItem(`medislot_${key}`) || "[]"
+      );
+
+      const status = {};
+
+      timeSlots.forEach((slot) => {
+        status[slot] = bookedSlots.includes(slot);
+      });
+
+      setAvailability(status);
+    } catch {
+      setAvailability({});
+    }
+  }, [bookingForm.date, selectedDoctor]);
+
+  const filteredDoctors = useMemo(() => {
+    return doctors.filter((doctor) => {
+      const matchesSearch =
+        doctor.name.toLowerCase().includes(search.toLowerCase()) ||
+        doctor.specialty.toLowerCase().includes(search.toLowerCase());
+
+      const matchesSpecialty =
+        specialty === "All" ||
+        doctor.specialty.toLowerCase().includes(specialty.toLowerCase());
+
+      return matchesSearch && matchesSpecialty;
+    });
+  }, [search, specialty]);
+
+  const scrollToSection = (section) => {
+    setActiveSection(section);
+    setMobileMenu(false);
+
+    const element = document.getElementById(section);
 
     if (element) {
       element.scrollIntoView({
@@ -91,88 +218,180 @@ function App() {
         block: "start",
       });
     }
-
-    setMobileMenu(false);
   };
 
-  const filteredDoctors = doctors.filter((doctor) => {
-    const searchText = search.toLowerCase();
+  const openAuth = (mode = "login") => {
+    setAuthMode(mode);
+    setShowAuth(true);
+  };
 
-    const matchesSearch =
-      doctor.name.toLowerCase().includes(searchText) ||
-      doctor.specialty.toLowerCase().includes(searchText);
-
-    const matchesSpecialty =
-      specialtyFilter === "All Specialties" ||
-      doctor.specialty === specialtyFilter;
-
-    return matchesSearch && matchesSpecialty;
-  });
-
-  const openBooking = (doctor) => {
-    setSelectedDoctor(doctor);
-    setErrorMessage("");
-    setSuccessMessage("");
-
-    setBookingForm({
+  const closeAuth = () => {
+    setShowAuth(false);
+    setAuthForm({
       name: "",
       email: "",
+      password: "",
+    });
+  };
+
+  const handleAuthChange = (e) => {
+    setAuthForm({
+      ...authForm,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+
+    if (authMode === "register" && !authForm.name.trim()) {
+      showToast("Please enter your name", "error");
+      return;
+    }
+
+    if (!authForm.email.trim() || !authForm.password.trim()) {
+      showToast("Please fill all required fields", "error");
+      return;
+    }
+
+    if (authForm.password.length < 6) {
+      showToast("Password must contain at least 6 characters", "error");
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      const endpoint =
+        authMode === "register"
+          ? "/api/auth/register"
+          : "/api/auth/login";
+
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(authForm),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Authentication failed");
+      }
+
+      localStorage.setItem("medislot_token", data.token);
+      localStorage.setItem("medislot_user", JSON.stringify(data.user));
+
+      setToken(data.token);
+      setUser(data.user);
+
+      closeAuth();
+
+      showToast(
+        authMode === "register"
+          ? "Account created successfully!"
+          : "Welcome back!"
+      );
+    } catch (error) {
+      showToast(error.message || "Something went wrong", "error");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem("medislot_token");
+    localStorage.removeItem("medislot_user");
+
+    setToken("");
+    setUser(null);
+
+    showToast("Logged out successfully");
+  };
+
+  const openBooking = (doctor) => {
+    if (!user) {
+      openAuth("login");
+      showToast("Please login to book an appointment", "error");
+      return;
+    }
+
+    setSelectedDoctor(doctor);
+    setSelectedSlot("");
+
+    setBookingForm({
+      name: user.name || "",
+      email: user.email || "",
       phone: "",
       date: "",
-      time: doctor.timings[0],
-      consultation: "Clinic Visit",
       symptoms: "",
     });
 
-    setBookingOpen(true);
+    setShowBooking(true);
   };
 
   const closeBooking = () => {
-    setBookingOpen(false);
+    setShowBooking(false);
     setSelectedDoctor(null);
-    setErrorMessage("");
+    setSelectedSlot("");
   };
 
-  const handleFormChange = (e) => {
-    const { name, value } = e.target;
+  const handleBookingChange = (e) => {
+    setBookingForm({
+      ...bookingForm,
+      [e.target.name]: e.target.value,
+    });
+  };
 
-    setBookingForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+  const selectSlot = (slot) => {
+    if (availability[slot]) {
+      showToast("This time slot is already booked", "error");
+      return;
+    }
+
+    setSelectedSlot(slot);
   };
 
   const handleBooking = async (e) => {
     e.preventDefault();
 
-    if (!selectedDoctor) return;
+    if (!selectedDoctor) {
+      showToast("Please select a doctor", "error");
+      return;
+    }
 
     if (
       !bookingForm.name ||
       !bookingForm.email ||
       !bookingForm.phone ||
       !bookingForm.date ||
-      !bookingForm.time
+      !selectedSlot
     ) {
-      setErrorMessage("Please fill in all required fields.");
+      showToast("Please complete all required fields", "error");
       return;
     }
 
+    if (bookingForm.phone.length < 10) {
+      showToast("Please enter a valid phone number", "error");
+      return;
+    }
+
+    setBookingLoading(true);
+
     const appointment = {
-      id: Date.now(),
-      doctor: selectedDoctor.name,
-      specialty: selectedDoctor.specialty,
-      patient: bookingForm.name,
+      name: bookingForm.name,
       email: bookingForm.email,
       phone: bookingForm.phone,
+      doctor: selectedDoctor.name,
       date: bookingForm.date,
-      time: bookingForm.time,
-      consultation: bookingForm.consultation,
-      symptoms: bookingForm.symptoms,
+      time: selectedSlot,
+      reason: bookingForm.symptoms,
     };
 
     try {
-      const response = await fetch("https://medislot-4w01.onrender.com/book", {
+      const response = await fetch(`${API_URL}/book`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -183,27 +402,74 @@ function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error("Booking failed");
+        throw new Error(data.message || "Failed to book appointment");
       }
 
-      setAppointments((prev) => [appointment, ...prev]);
+      const key = `${selectedDoctor.id}-${bookingForm.date}`;
 
-      setErrorMessage("");
-      setSuccessMessage(
-        data.message || "Appointment booked successfully!"
+      const existing = JSON.parse(
+        localStorage.getItem(`medislot_${key}`) || "[]"
       );
 
-      setTimeout(() => {
-        closeBooking();
-        scrollToSection("appointments");
-      }, 1200);
+      localStorage.setItem(
+        `medislot_${key}`,
+        JSON.stringify([...existing, selectedSlot])
+      );
+
+      showToast("Appointment booked successfully!");
+
+      closeBooking();
+
+      if (user) {
+        fetchAppointments();
+      }
     } catch (error) {
-      console.error("Booking error:", error);
-
-      setErrorMessage(
-        "Unable to connect to the server. Please make sure the backend is running on port 5000."
+      showToast(
+        error.message || "Unable to connect to the server",
+        "error"
       );
+    } finally {
+      setBookingLoading(false);
     }
+  };
+
+  const fetchAppointments = async () => {
+    setLoadingAppointments(true);
+
+    try {
+      const response = await fetch(`${API_URL}/appointments`);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to fetch appointments");
+      }
+
+      const userAppointments = user?.email
+        ? (data.appointments || []).filter(
+            (appointment) =>
+              appointment.email?.toLowerCase() ===
+              user.email?.toLowerCase()
+          )
+        : [];
+
+      setAppointments(userAppointments);
+    } catch {
+      showToast("Unable to load appointments", "error");
+    } finally {
+      setLoadingAppointments(false);
+    }
+  };
+
+  const openAppointments = async () => {
+    if (!user) {
+      openAuth("login");
+      showToast("Please login to view appointments", "error");
+      return;
+    }
+
+    setShowAppointments(true);
+    await fetchAppointments();
   };
 
   return (
@@ -212,55 +478,97 @@ function App() {
       <header className="navbar">
         <div className="nav-container">
           <button
-            className="brand"
+            className="logo"
             onClick={() => scrollToSection("home")}
           >
-            <span className="brand-icon">+</span>
-            <span>
+            <span className="logo-icon">✚</span>
+            <span className="logo-text">
               Medi<span>Slot</span>
             </span>
           </button>
 
-          <nav className={`nav-links ${mobileMenu ? "active" : ""}`}>
-            <button onClick={() => scrollToSection("home")}>Home</button>
+          <nav className={`nav-links ${mobileMenu ? "open" : ""}`}>
+            <button onClick={() => scrollToSection("home")}>
+              Home
+            </button>
+
             <button onClick={() => scrollToSection("doctors")}>
               Doctors
             </button>
+
             <button onClick={() => scrollToSection("specialties")}>
               Specialties
             </button>
-            <button onClick={() => scrollToSection("how-it-works")}>
-              How It Works
+
+            <button onClick={() => scrollToSection("about")}>
+              About
             </button>
-            <button
-              className="nav-book"
-              onClick={() => scrollToSection("doctors")}
-            >
-              Book Appointment
-            </button>
-            <button
-              onClick={() => scrollToSection("appointments")}
-            >
-              Appointments
+
+            <button onClick={openAppointments}>
+              My Appointments
             </button>
           </nav>
 
-          <button
-            className="menu-btn"
-            onClick={() => setMobileMenu(!mobileMenu)}
-          >
-            ☰
-          </button>
+          <div className="nav-actions">
+            {user ? (
+              <div className="user-menu">
+                <div className="user-avatar">
+                  {user.name?.charAt(0).toUpperCase()}
+                </div>
+
+                <div className="user-info">
+                  <strong>{user.name}</strong>
+                  <span>Patient</span>
+                </div>
+
+                <button
+                  className="logout-btn"
+                  onClick={logout}
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  className="login-btn"
+                  onClick={() => openAuth("login")}
+                >
+                  Login
+                </button>
+
+                <button
+                  className="nav-register-btn"
+                  onClick={() => openAuth("register")}
+                >
+                  Get Started
+                </button>
+              </>
+            )}
+
+            <button
+              className="mobile-menu-btn"
+              onClick={() => setMobileMenu(!mobileMenu)}
+            >
+              ☰
+            </button>
+          </div>
         </div>
       </header>
 
       {/* HERO */}
       <main>
-        <section id="home" className="hero">
+        <section id="home" className="hero-section">
+          <div className="hero-background">
+            <div className="hero-orb orb-one"></div>
+            <div className="hero-orb orb-two"></div>
+          </div>
+
           <div className="hero-container">
             <div className="hero-content">
               <div className="hero-badge">
-                <span>●</span> Trusted Healthcare Platform
+                <span className="pulse-dot"></span>
+                Trusted healthcare, simplified
               </div>
 
               <h1>
@@ -270,9 +578,9 @@ function App() {
               </h1>
 
               <p>
-                Book appointments with trusted doctors quickly and
-                conveniently. Quality healthcare is now just a few clicks
-                away.
+                Connect with trusted doctors, discover the right
+                specialist and book your appointment in just a few
+                clicks.
               </p>
 
               <div className="hero-actions">
@@ -280,84 +588,89 @@ function App() {
                   className="primary-btn"
                   onClick={() => scrollToSection("doctors")}
                 >
-                  Find a Doctor →
+                  Find a Doctor
+                  <span>→</span>
                 </button>
 
                 <button
                   className="secondary-btn"
-                  onClick={() => scrollToSection("how-it-works")}
+                  onClick={() => scrollToSection("about")}
                 >
-                  How It Works
+                  Learn More
                 </button>
               </div>
 
               <div className="hero-trust">
-                <div>
-                  <strong>10K+</strong>
-                  <span>Patients</span>
+                <div className="trust-avatars">
+                  <span>👩🏻‍⚕️</span>
+                  <span>👨🏻‍⚕️</span>
+                  <span>👨🏻‍⚕️</span>
                 </div>
 
                 <div>
-                  <strong>50+</strong>
-                  <span>Doctors</span>
-                </div>
-
-                <div>
-                  <strong>24/7</strong>
-                  <span>Support</span>
+                  <strong>Trusted by patients</strong>
+                  <small>Professional healthcare access</small>
                 </div>
               </div>
             </div>
 
-            <div className="hero-card-area">
-              <div className="hero-main-card">
-                <div className="hero-card-icon">🩺</div>
-
-                <h3>Healthcare made simple</h3>
-
-                <p>
-                  Find the right specialist and schedule your consultation
-                  without waiting in long queues.
-                </p>
-
-                <div className="hero-mini-row">
-                  <div className="mini-avatar">👩‍⚕️</div>
+            <div className="hero-visual">
+              <div className="medical-dashboard">
+                <div className="dashboard-top">
                   <div>
-                    <strong>Verified Doctors</strong>
-                    <span>Experienced professionals</span>
+                    <small>Today's care</small>
+                    <h3>Doctor Appointment</h3>
+                  </div>
+
+                  <div
+                    className={`status-pill ${
+                      serverOnline ? "online" : "offline"
+                    }`}
+                  >
+                    <span></span>
+                    {serverOnline ? "Online" : "Offline"}
                   </div>
                 </div>
 
-                <div className="hero-mini-row">
-                  <div className="mini-avatar">📅</div>
+                <div className="dashboard-card featured-doctor">
+                  <div className="doctor-mini-image">
+                    <img
+                      src={doctors[0].image}
+                      alt={doctors[0].name}
+                    />
+                  </div>
+
                   <div>
-                    <strong>Easy Booking</strong>
-                    <span>Choose your preferred time</span>
+                    <span>Available today</span>
+                    <strong>{doctors[0].name}</strong>
+                    <small>{doctors[0].specialty}</small>
+                  </div>
+
+                  <div className="rating">
+                    ★ {doctors[0].rating}
                   </div>
                 </div>
 
-                <div className="hero-mini-row">
-                  <div className="mini-avatar">🔒</div>
+                <div className="dashboard-stats">
                   <div>
-                    <strong>Secure & Private</strong>
-                    <span>Your information stays protected</span>
+                    <strong>3</strong>
+                    <span>Specialists</span>
+                  </div>
+
+                  <div>
+                    <strong>4.9</strong>
+                    <span>Avg. Rating</span>
+                  </div>
+
+                  <div>
+                    <strong>24/7</strong>
+                    <span>Access</span>
                   </div>
                 </div>
-              </div>
 
-              <div className="floating-card floating-one">
-                <span>⭐</span>
-                <div>
-                  <strong>4.9/5</strong>
-                  <small>Patient Rating</small>
-                </div>
-              </div>
-
-              <div className="floating-card floating-two">
-                <span>✓</span>
-                <div>
-                  <strong>Verified</strong>
-                  <small>Doctors</small>
+                <div className="dashboard-bottom">
+                  <span>Next available appointment</span>
+                  <strong>Today · 09:00 AM</strong>
                 </div>
               </div>
             </div>
@@ -368,286 +681,294 @@ function App() {
         <section className="search-section">
           <div className="search-container">
             <div className="search-box">
-              <span>🔍</span>
+              <span>⌕</span>
+
               <input
                 type="text"
                 placeholder="Search doctor or specialty..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+
+              {search && (
+                <button
+                  className="clear-search"
+                  onClick={() => setSearch("")}
+                >
+                  ×
+                </button>
+              )}
             </div>
 
-            <select
-              value={specialtyFilter}
-              onChange={(e) => setSpecialtyFilter(e.target.value)}
-            >
-              <option>All Specialties</option>
-              <option>General Physician</option>
-              <option>Dermatologist</option>
-              <option>Cardiologist</option>
-            </select>
-
-            <button
-              className="search-btn"
-              onClick={() => scrollToSection("doctors")}
-            >
-              Search
-            </button>
+            <div className="filter-pills">
+              {["All", "General Physician", "Dermatology", "Cardiology"].map(
+                (item) => (
+                  <button
+                    key={item}
+                    className={`filter-pill ${
+                      specialty === item ? "active" : ""
+                    }`}
+                    onClick={() => setSpecialty(item)}
+                  >
+                    {item}
+                  </button>
+                )
+              )}
+            </div>
           </div>
         </section>
 
         {/* DOCTORS */}
-        <section id="doctors" className="section">
-          <div className="section-heading">
-            <span className="section-label">OUR SPECIALISTS</span>
-            <h2>Meet Our Doctors</h2>
-            <p>
-              Consult experienced healthcare professionals from different
-              medical specialties.
-            </p>
-          </div>
+        <section id="doctors" className="doctors-section">
+          <div className="section-container">
+            <div className="section-heading">
+              <div>
+                <span className="section-label">
+                  OUR SPECIALISTS
+                </span>
 
-          <div className="doctor-grid">
-            {filteredDoctors.map((doctor) => (
-              <article className="doctor-card" key={doctor.id}>
-                <div className="doctor-image-wrapper">
-                  <img src={doctor.image} alt={doctor.name} />
+                <h2>Meet Our Doctors</h2>
 
-                  <div className="verified-badge">✓ Verified</div>
-                </div>
+                <p>
+                  Experienced professionals dedicated to your
+                  health and wellbeing.
+                </p>
+              </div>
 
-                <div className="doctor-content">
-                  <div className="rating">
-                    ⭐ {doctor.rating}
-                  </div>
+              <div className="doctor-count">
+                <strong>{filteredDoctors.length}</strong>
+                <span>Doctors</span>
+              </div>
+            </div>
 
-                  <h3>{doctor.name}</h3>
+            <div className="doctor-grid">
+              {filteredDoctors.length > 0 ? (
+                filteredDoctors.map((doctor) => (
+                  <article className="doctor-card" key={doctor.id}>
+                    <div className="doctor-image-wrapper">
+                      <img
+                        className="doctor-image"
+                        src={doctor.image}
+                        alt={doctor.name}
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                          e.currentTarget.parentElement.classList.add(
+                            "image-fallback"
+                          );
+                        }}
+                      />
 
-                  <p className="doctor-specialty">
-                    {doctor.specialty}
+                      <div className="image-fallback-content">
+                        {doctor.initials}
+                      </div>
+
+                      <div className="verified-badge">
+                        ✓
+                      </div>
+
+                      <div className="doctor-rating">
+                        ★ {doctor.rating}
+                      </div>
+                    </div>
+
+                    <div className="doctor-content">
+                      <div className="doctor-heading-row">
+                        <div>
+                          <h3>{doctor.name}</h3>
+                          <p className="doctor-specialty">
+                            {doctor.specialty}
+                          </p>
+                        </div>
+
+                        <div className="doctor-fee">
+                          ₹{doctor.fee}
+                        </div>
+                      </div>
+
+                      <p className="doctor-description">
+                        {doctor.description}
+                      </p>
+
+                      <div className="doctor-meta">
+                        <span>◷ {doctor.experience}</span>
+                        <span>● Available</span>
+                      </div>
+
+                      <button
+                        className="book-btn"
+                        onClick={() => openBooking(doctor)}
+                      >
+                        Book Appointment
+                        <span>→</span>
+                      </button>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <div>🔍</div>
+                  <h3>No doctors found</h3>
+                  <p>
+                    Try another doctor name or specialty.
                   </p>
-
-                  <p className="doctor-description">
-                    {doctor.description}
-                  </p>
-
-                  <div className="doctor-info">
-                    <span>🎓 {doctor.experience}</span>
-                    <span>👥 {doctor.patients}</span>
-                  </div>
-
                   <button
-                    className="doctor-btn"
-                    onClick={() => openBooking(doctor)}
+                    onClick={() => {
+                      setSearch("");
+                      setSpecialty("All");
+                    }}
                   >
-                    Book Appointment
+                    Clear Filters
                   </button>
                 </div>
-              </article>
-            ))}
-          </div>
-
-          {filteredDoctors.length === 0 && (
-            <div className="empty-state">
-              <span>🔎</span>
-              <h3>No doctors found</h3>
-              <p>Try another doctor name or specialty.</p>
+              )}
             </div>
-          )}
+          </div>
         </section>
 
         {/* SPECIALTIES */}
-        <section id="specialties" className="section light-section">
-          <div className="section-heading">
-            <span className="section-label">SPECIALTIES</span>
-            <h2>Healthcare For Every Need</h2>
-            <p>
-              Choose a medical specialty and connect with the right
-              professional.
-            </p>
-          </div>
+        <section
+          id="specialties"
+          className="specialties-section"
+        >
+          <div className="section-container">
+            <div className="section-heading centered">
+              <span className="section-label">
+                HEALTHCARE SPECIALTIES
+              </span>
 
-          <div className="specialty-grid">
-            {specialties.map((specialty) => (
-              <div className="specialty-card" key={specialty.title}>
-                <div className="specialty-icon">{specialty.icon}</div>
-                <h3>{specialty.title}</h3>
-                <p>{specialty.text}</p>
+              <h2>Care for Every Need</h2>
+
+              <p>
+                Choose a specialty and find the right healthcare
+                professional for you.
+              </p>
+            </div>
+
+            <div className="specialty-grid">
+              {specialties.map((item) => (
                 <button
+                  className="specialty-card"
+                  key={item.name}
                   onClick={() => {
-                    setSpecialtyFilter(
-                      specialty.title === "Dermatology"
-                        ? "Dermatologist"
-                        : specialty.title === "Cardiology"
-                        ? "Cardiologist"
-                        : "General Physician"
-                    );
+                    setSpecialty(item.name);
                     scrollToSection("doctors");
                   }}
                 >
-                  Explore Doctors →
+                  <div className="specialty-icon">
+                    {item.icon}
+                  </div>
+
+                  <div>
+                    <h3>{item.name}</h3>
+                    <p>{item.description}</p>
+                  </div>
+
+                  <span className="specialty-arrow">
+                    →
+                  </span>
                 </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ABOUT */}
+        <section id="about" className="about-section">
+          <div className="section-container about-grid">
+            <div className="about-visual">
+              <div className="about-main-card">
+                <div className="about-icon">✚</div>
+
+                <span>Healthcare made simple</span>
+
+                <strong>
+                  Better care starts with the right
+                  connection.
+                </strong>
+
+                <div className="about-stat">
+                  <strong>01</strong>
+                  <span>
+                    Search
+                    <br />
+                    Choose
+                    <br />
+                    Book
+                  </span>
+                </div>
               </div>
-            ))}
-          </div>
-        </section>
 
-        {/* HOW IT WORKS */}
-        <section id="how-it-works" className="section">
-          <div className="section-heading">
-            <span className="section-label">HOW IT WORKS</span>
-            <h2>Book In 4 Simple Steps</h2>
-            <p>
-              MediSlot makes scheduling healthcare appointments simple
-              and convenient.
-            </p>
-          </div>
+              <div className="floating-card card-one">
+                <strong>4.9/5</strong>
+                <span>Patient Rating</span>
+              </div>
 
-          <div className="steps-grid">
-            <div className="step-card">
-              <div className="step-number">01</div>
-              <div className="step-icon">🔍</div>
-              <h3>Find a Doctor</h3>
-              <p>Search for doctors by name or medical specialty.</p>
+              <div className="floating-card card-two">
+                <strong>✓</strong>
+                <span>Verified Doctors</span>
+              </div>
             </div>
 
-            <div className="step-card">
-              <div className="step-number">02</div>
-              <div className="step-icon">👨‍⚕️</div>
-              <h3>Choose Doctor</h3>
-              <p>Review doctor profiles and select your specialist.</p>
-            </div>
+            <div className="about-content">
+              <span className="section-label">
+                WHY MEDISLOT
+              </span>
 
-            <div className="step-card">
-              <div className="step-number">03</div>
-              <div className="step-icon">📅</div>
-              <h3>Select Time</h3>
-              <p>Choose a convenient date and available time slot.</p>
-            </div>
-
-            <div className="step-card">
-              <div className="step-number">04</div>
-              <div className="step-icon">✓</div>
-              <h3>Confirm</h3>
-              <p>Enter your details and confirm your appointment.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* FEATURES */}
-        <section className="features-section">
-          <div className="features-container">
-            <div className="feature-text">
-              <span className="section-label">WHY MEDISLOT</span>
               <h2>
-                Healthcare That Fits
-                <span>Your Schedule</span>
+                Healthcare that fits
+                <span> your life.</span>
               </h2>
 
               <p>
-                MediSlot combines simple technology with convenient
-                healthcare access to make appointment scheduling easier
-                for patients.
+                MediSlot is designed to make finding and booking
+                healthcare appointments simple, fast and
+                convenient.
               </p>
 
               <div className="feature-list">
                 <div>
                   <span>✓</span>
-                  <p>
-                    <strong>Verified Professionals</strong>
-                    <br />
-                    Connect with qualified doctors.
-                  </p>
+                  <div>
+                    <strong>Verified Specialists</strong>
+                    <p>
+                      Connect with experienced healthcare
+                      professionals.
+                    </p>
+                  </div>
                 </div>
 
                 <div>
                   <span>✓</span>
-                  <p>
-                    <strong>Flexible Appointments</strong>
-                    <br />
-                    Select a time that works for you.
-                  </p>
+                  <div>
+                    <strong>Easy Booking</strong>
+                    <p>
+                      Select a doctor, date and available time
+                      slot.
+                    </p>
+                  </div>
                 </div>
 
                 <div>
                   <span>✓</span>
-                  <p>
-                    <strong>Simple Booking</strong>
-                    <br />
-                    Book without unnecessary complexity.
-                  </p>
+                  <div>
+                    <strong>Simple Experience</strong>
+                    <p>
+                      Everything you need in one elegant
+                      platform.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div className="feature-visual">
-              <div className="feature-circle">
-                <div className="feature-center">❤️</div>
-
-                <div className="feature-orbit orbit-one">
-                  🩺
-                </div>
-
-                <div className="feature-orbit orbit-two">
-                  📅
-                </div>
-
-                <div className="feature-orbit orbit-three">
-                  🔒
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* APPOINTMENTS */}
-        <section id="appointments" className="section appointments-section">
-          <div className="section-heading">
-            <span className="section-label">MY APPOINTMENTS</span>
-            <h2>Your Bookings</h2>
-            <p>
-              Your confirmed appointments will appear here.
-            </p>
-          </div>
-
-          {appointments.length === 0 ? (
-            <div className="no-appointments">
-              <div>📅</div>
-              <h3>No appointments yet</h3>
-              <p>
-                Book your first appointment with one of our doctors.
-              </p>
 
               <button
                 className="primary-btn"
                 onClick={() => scrollToSection("doctors")}
               >
-                Find a Doctor
+                Explore Doctors →
               </button>
             </div>
-          ) : (
-            <div className="appointment-list">
-              {appointments.map((appointment) => (
-                <div className="appointment-card" key={appointment.id}>
-                  <div className="appointment-icon">🩺</div>
-
-                  <div className="appointment-details">
-                    <span className="confirmed">CONFIRMED</span>
-
-                    <h3>{appointment.doctor}</h3>
-
-                    <p>{appointment.specialty}</p>
-
-                    <div className="appointment-meta">
-                      <span>📅 {appointment.date}</span>
-                      <span>⏰ {appointment.time}</span>
-                      <span>💻 {appointment.consultation}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          </div>
         </section>
       </main>
 
@@ -655,225 +976,427 @@ function App() {
       <footer className="footer">
         <div className="footer-container">
           <div className="footer-brand">
-            <button
-              className="brand footer-logo"
-              onClick={() => scrollToSection("home")}
-            >
-              <span className="brand-icon">+</span>
-              <span>
-                Medi<span>Slot</span>
-              </span>
-            </button>
+            <div className="footer-logo">
+              <span>✚</span>
+              Medi<span>Slot</span>
+            </div>
 
             <p>
-              Making healthcare appointment scheduling simple,
-              accessible and convenient.
+              Modern healthcare appointment booking,
+              designed for simplicity and convenience.
             </p>
           </div>
 
-          <div className="footer-column">
-            <h4>Quick Links</h4>
-            <button onClick={() => scrollToSection("home")}>
-              Home
-            </button>
-            <button onClick={() => scrollToSection("doctors")}>
-              Doctors
-            </button>
-            <button onClick={() => scrollToSection("specialties")}>
-              Specialties
-            </button>
-            <button onClick={() => scrollToSection("appointments")}>
-              Appointments
-            </button>
-          </div>
+          <div className="footer-links">
+            <div>
+              <h4>Explore</h4>
+              <button onClick={() => scrollToSection("home")}>
+                Home
+              </button>
+              <button onClick={() => scrollToSection("doctors")}>
+                Doctors
+              </button>
+              <button
+                onClick={() => scrollToSection("specialties")}
+              >
+                Specialties
+              </button>
+            </div>
 
-          <div className="footer-column">
-            <h4>Services</h4>
-            <span>Doctor Consultation</span>
-            <span>Appointment Booking</span>
-            <span>Specialist Search</span>
-            <span>Healthcare Support</span>
-          </div>
-
-          <div className="footer-column">
-            <h4>Contact</h4>
-            <span>📧 shubhamrajputx3@gmail.com</span>
-            <span>📞 +91 9153073513</span>
-            <span>📍 Roorkee, Uttarakhand</span>
+            <div>
+              <h4>Account</h4>
+              <button onClick={() => openAuth("login")}>
+                Login
+              </button>
+              <button onClick={() => openAuth("register")}>
+                Register
+              </button>
+              <button onClick={openAppointments}>
+                Appointments
+              </button>
+            </div>
           </div>
         </div>
 
         <div className="footer-bottom">
-          <p>© 2026 MediSlot. All rights reserved.</p>
-          <p>Designed by Shubham Singh</p>
+          <span>
+            © {new Date().getFullYear()} MediSlot. All rights
+            reserved.
+          </span>
+
+          <span>Designed & Developed by Shubham Singh</span>
         </div>
       </footer>
 
-      {/* BOOKING MODAL */}
-      {bookingOpen && selectedDoctor && (
-        <div className="modal-overlay" onClick={closeBooking}>
-          <div
-            className="booking-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button className="modal-close" onClick={closeBooking}>
+      {/* AUTH MODAL */}
+      {showAuth && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeAuth();
+          }}
+        >
+          <div className="auth-modal">
+            <button
+              className="modal-close"
+              onClick={closeAuth}
+            >
               ×
             </button>
 
-            <div className="modal-header">
-              <span className="modal-label">BOOK APPOINTMENT</span>
-              <h2>Schedule Your Visit</h2>
+            <div className="auth-header">
+              <div className="auth-icon">✚</div>
+
+              <h2>
+                {authMode === "login"
+                  ? "Welcome Back"
+                  : "Create Account"}
+              </h2>
+
               <p>
-                Book an appointment with{" "}
-                <strong>{selectedDoctor.name}</strong>
+                {authMode === "login"
+                  ? "Login to manage your appointments."
+                  : "Create your MediSlot patient account."}
               </p>
             </div>
 
-            <div className="selected-doctor">
-              <img
-                src={selectedDoctor.image}
-                alt={selectedDoctor.name}
-              />
+            <div className="auth-tabs">
+              <button
+                className={
+                  authMode === "login" ? "active" : ""
+                }
+                onClick={() => setAuthMode("login")}
+              >
+                Login
+              </button>
+
+              <button
+                className={
+                  authMode === "register" ? "active" : ""
+                }
+                onClick={() => setAuthMode("register")}
+              >
+                Register
+              </button>
+            </div>
+
+            <form onSubmit={handleAuthSubmit}>
+              {authMode === "register" && (
+                <div className="form-group">
+                  <label>Full Name</label>
+                  <input
+                    name="name"
+                    value={authForm.name}
+                    onChange={handleAuthChange}
+                    placeholder="Enter your full name"
+                  />
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>Email Address</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={authForm.email}
+                  onChange={handleAuthChange}
+                  placeholder="you@example.com"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Password</label>
+                <input
+                  type="password"
+                  name="password"
+                  value={authForm.password}
+                  onChange={handleAuthChange}
+                  placeholder="Minimum 6 characters"
+                />
+              </div>
+
+              <button
+                className="auth-submit"
+                type="submit"
+                disabled={authLoading}
+              >
+                {authLoading
+                  ? "Please wait..."
+                  : authMode === "login"
+                  ? "Login to MediSlot"
+                  : "Create Account"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* BOOKING MODAL */}
+      {showBooking && selectedDoctor && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeBooking();
+            }
+          }}
+        >
+          <div className="booking-modal">
+            <button
+              className="modal-close"
+              onClick={closeBooking}
+            >
+              ×
+            </button>
+
+            <div className="booking-header">
+              <span className="section-label">
+                BOOK APPOINTMENT
+              </span>
+
+              <h2>Schedule your visit</h2>
+
+              <p>
+                Select a convenient date and available time.
+              </p>
+            </div>
+
+            <div className="booking-doctor">
+              <div className="booking-doctor-image">
+                <img
+                  src={selectedDoctor.image}
+                  alt={selectedDoctor.name}
+                />
+              </div>
 
               <div>
                 <strong>{selectedDoctor.name}</strong>
                 <span>{selectedDoctor.specialty}</span>
-                <small>⭐ {selectedDoctor.rating} Rating</small>
               </div>
+
+              <strong>₹{selectedDoctor.fee}</strong>
             </div>
 
             <form onSubmit={handleBooking}>
               <div className="form-grid">
                 <div className="form-group">
-                  <label>
-                    Full Name <span>*</span>
-                  </label>
-
+                  <label>Your Name *</label>
                   <input
-                    type="text"
                     name="name"
-                    placeholder="Enter your full name"
                     value={bookingForm.name}
-                    onChange={handleFormChange}
-                    required
+                    onChange={handleBookingChange}
+                    placeholder="Full name"
                   />
                 </div>
 
                 <div className="form-group">
-                  <label>
-                    Email <span>*</span>
-                  </label>
-
+                  <label>Email *</label>
                   <input
                     type="email"
                     name="email"
-                    placeholder="you@example.com"
                     value={bookingForm.email}
-                    onChange={handleFormChange}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>
-                    Phone <span>*</span>
-                  </label>
-
-                  <input
-                    type="tel"
-                    name="phone"
-                    placeholder="+91 XXXXX XXXXX"
-                    value={bookingForm.phone}
-                    onChange={handleFormChange}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>
-                    Appointment Date <span>*</span>
-                  </label>
-
-                  <input
-                    type="date"
-                    name="date"
-                    value={bookingForm.date}
-                    onChange={handleFormChange}
-                    min={new Date().toISOString().split("T")[0]}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>
-                    Preferred Time <span>*</span>
-                  </label>
-
-                  <select
-                    name="time"
-                    value={bookingForm.time}
-                    onChange={handleFormChange}
-                    required
-                  >
-                    {selectedDoctor.timings.map((time) => (
-                      <option key={time} value={time}>
-                        {time}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Consultation Type</label>
-
-                  <select
-                    name="consultation"
-                    value={bookingForm.consultation}
-                    onChange={handleFormChange}
-                  >
-                    <option value="Clinic Visit">
-                      Clinic Visit
-                    </option>
-                    <option value="Video Consultation">
-                      Video Consultation
-                    </option>
-                  </select>
-                </div>
-
-                <div className="form-group full">
-                  <label>Symptoms / Message</label>
-
-                  <textarea
-                    name="symptoms"
-                    rows="3"
-                    placeholder="Briefly describe your concern..."
-                    value={bookingForm.symptoms}
-                    onChange={handleFormChange}
+                    onChange={handleBookingChange}
+                    placeholder="Email address"
                   />
                 </div>
               </div>
 
-              {errorMessage && (
-                <div className="form-error">
-                  ⚠ {errorMessage}
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Phone *</label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={bookingForm.phone}
+                    onChange={handleBookingChange}
+                    placeholder="10-digit mobile number"
+                    maxLength="10"
+                  />
                 </div>
-              )}
 
-              {successMessage && (
-                <div className="form-success">
-                  ✓ {successMessage}
+                <div className="form-group">
+                  <label>Date *</label>
+                  <input
+                    type="date"
+                    name="date"
+                    value={bookingForm.date}
+                    onChange={handleBookingChange}
+                    min={new Date()
+                      .toISOString()
+                      .split("T")[0]}
+                  />
                 </div>
-              )}
+              </div>
 
-              <button className="confirm-btn" type="submit">
-                Confirm Appointment →
+              <div className="slot-section">
+                <div className="slot-heading">
+                  <strong>Available Time</strong>
+                  <span>
+                    {bookingForm.date
+                      ? "Choose a slot"
+                      : "Select a date first"}
+                  </span>
+                </div>
+
+                <div className="slot-grid">
+                  {timeSlots.map((slot) => (
+                    <button
+                      type="button"
+                      key={slot}
+                      disabled={
+                        !bookingForm.date ||
+                        availability[slot]
+                      }
+                      className={`time-slot ${
+                        selectedSlot === slot
+                          ? "selected"
+                          : ""
+                      } ${
+                        availability[slot]
+                          ? "booked"
+                          : ""
+                      }`}
+                      onClick={() => selectSlot(slot)}
+                    >
+                      {slot}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Reason / Symptoms</label>
+                <textarea
+                  name="symptoms"
+                  value={bookingForm.symptoms}
+                  onChange={handleBookingChange}
+                  placeholder="Briefly describe your concern..."
+                  rows="3"
+                />
+              </div>
+
+              <div className="booking-summary">
+                <div>
+                  <span>Doctor</span>
+                  <strong>{selectedDoctor.name}</strong>
+                </div>
+
+                <div>
+                  <span>Appointment</span>
+                  <strong>
+                    {bookingForm.date && selectedSlot
+                      ? `${bookingForm.date} · ${selectedSlot}`
+                      : "Not selected"}
+                  </strong>
+                </div>
+              </div>
+
+              <button
+                className="confirm-booking-btn"
+                type="submit"
+                disabled={bookingLoading}
+              >
+                {bookingLoading
+                  ? "Booking..."
+                  : "Confirm Appointment →"}
               </button>
-
-              <p className="secure-note">
-                🔒 Your information is securely handled.
-              </p>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* APPOINTMENTS MODAL */}
+      {showAppointments && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowAppointments(false);
+            }
+          }}
+        >
+          <div className="appointments-modal">
+            <button
+              className="modal-close"
+              onClick={() => setShowAppointments(false)}
+            >
+              ×
+            </button>
+
+            <div className="appointments-header">
+              <span className="section-label">
+                YOUR APPOINTMENTS
+              </span>
+
+              <h2>My Appointments</h2>
+
+              <p>
+                View your upcoming and booked appointments.
+              </p>
+            </div>
+
+            {loadingAppointments ? (
+              <div className="loading-state">
+                <div className="loader"></div>
+                Loading appointments...
+              </div>
+            ) : appointments.length > 0 ? (
+              <div className="appointments-list">
+                {appointments.map((appointment) => (
+                  <div
+                    className="appointment-card"
+                    key={appointment._id}
+                  >
+                    <div className="appointment-date">
+                      <strong>
+                        {appointment.date}
+                      </strong>
+                      <span>{appointment.time}</span>
+                    </div>
+
+                    <div className="appointment-info">
+                      <strong>{appointment.doctor}</strong>
+                      <span>{appointment.email}</span>
+                      <span>{appointment.phone}</span>
+                    </div>
+
+                    <div className="appointment-status">
+                      Confirmed
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-appointments">
+                <div>📅</div>
+                <h3>No appointments yet</h3>
+                <p>
+                  Book an appointment with one of our
+                  specialists.
+                </p>
+
+                <button
+                  onClick={() => {
+                    setShowAppointments(false);
+                    scrollToSection("doctors");
+                  }}
+                >
+                  Find a Doctor
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TOAST */}
+      {toast.show && (
+        <div className={`toast ${toast.type}`}>
+          <span className="toast-icon">
+            {toast.type === "error" ? "!" : "✓"}
+          </span>
+
+          <span>{toast.message}</span>
         </div>
       )}
     </div>
