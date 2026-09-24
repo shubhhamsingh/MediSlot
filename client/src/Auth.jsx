@@ -5,13 +5,11 @@ const API_URL = "https://medislot-4w01.onrender.com";
 
 export default function Auth({ onLogin, onClose }) {
   const [isLogin, setIsLogin] = useState(true);
-
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
   });
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -46,13 +44,16 @@ export default function Auth({ onLogin, onClose }) {
             password: formData.password,
           };
 
-      const response = await fetch(`${API_URL}${endpoint}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
+      const response = await fetch(
+        `${API_URL}${endpoint}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }
+      );
 
       const data = await response.json();
 
@@ -62,7 +63,6 @@ export default function Auth({ onLogin, onClose }) {
         );
       }
 
-      // Save fresh JWT token
       if (data.token) {
         localStorage.setItem("token", data.token);
       }
@@ -89,11 +89,10 @@ export default function Auth({ onLogin, onClose }) {
           onClose();
         }
       }, 500);
-    } catch (error) {
-      console.error("Auth Error:", error);
-
+    } catch (err) {
+      console.error("Auth Error:", err);
       setError(
-        error.message || "Unable to connect to server"
+        err.message || "Unable to connect to server"
       );
     } finally {
       setLoading(false);
@@ -135,7 +134,6 @@ export default function Auth({ onLogin, onClose }) {
         )}
 
         <form onSubmit={handleSubmit}>
-
           {!isLogin && (
             <div className="form-group">
               <label>Name</label>
@@ -189,7 +187,6 @@ export default function Auth({ onLogin, onClose }) {
               ? "Login"
               : "Create Account"}
           </button>
-
         </form>
 
         <div className="auth-switch">
