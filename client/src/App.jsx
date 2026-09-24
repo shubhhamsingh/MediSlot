@@ -172,7 +172,7 @@ function App() {
     };
 
     try {
-      const response = await fetch("https://medislot-imbs.onrender.com/book", {
+      const response = await fetch("https://medislot-4w01.onrender.com/book", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
