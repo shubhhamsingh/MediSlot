@@ -195,7 +195,7 @@ const Appointment = mongoose.model(
 );
 
 // ==========================================
-// AUTH MIDDLEWARE
+// AUTHENTICATION
 // ==========================================
 
 const authenticateToken = async (req, res, next) => {
@@ -203,15 +203,19 @@ const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
+      console.log("AUTH ERROR: No Authorization header");
+
       return res.status(401).json({
         success: false,
         message: "Authorization token required",
       });
     }
 
-    const parts = authHeader.split(" ");
+    const parts = authHeader.trim().split(/\s+/);
 
     if (parts.length !== 2 || parts[0] !== "Bearer") {
+      console.log("AUTH ERROR: Invalid Authorization format");
+
       return res.status(401).json({
         success: false,
         message: "Invalid authorization format",
@@ -220,13 +224,39 @@ const authenticateToken = async (req, res, next) => {
 
     const token = parts[1];
 
-    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!token) {
+      console.log("AUTH ERROR: Empty token");
+
+      return res.status(401).json({
+        success: false,
+        message: "Token missing",
+      });
+    }
+
+    let decoded;
+
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (jwtError) {
+      console.log(
+        "AUTH ERROR:",
+        jwtError.name,
+        jwtError.message
+      );
+
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired token",
+      });
+    }
 
     const user = await User.findById(decoded.userId).select(
       "-password"
     );
 
     if (!user) {
+      console.log("AUTH ERROR: User not found");
+
       return res.status(401).json({
         success: false,
         message: "User not found",
@@ -241,7 +271,7 @@ const authenticateToken = async (req, res, next) => {
 
     return res.status(401).json({
       success: false,
-      message: "Invalid or expired token",
+      message: "Authentication failed",
     });
   }
 };
@@ -410,7 +440,7 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // ==========================================
-// GET DOCTORS
+// DOCTORS
 // ==========================================
 
 app.get("/api/doctors", (req, res) => {
@@ -419,10 +449,6 @@ app.get("/api/doctors", (req, res) => {
     doctors,
   });
 });
-
-// ==========================================
-// GET ONE DOCTOR
-// ==========================================
 
 app.get("/api/doctors/:doctorId", (req, res) => {
   const doctorId = Number(req.params.doctorId);
@@ -537,14 +563,15 @@ app.post("/book", authenticateToken, async (req, res) => {
       });
     }
 
-    const existingAppointment = await Appointment.findOne({
-      doctorId: Number(doctorId),
-      date,
-      time,
-      status: {
-        $ne: "Cancelled",
-      },
-    });
+    const existingAppointment =
+      await Appointment.findOne({
+        doctorId: Number(doctorId),
+        date,
+        time,
+        status: {
+          $ne: "Cancelled",
+        },
+      });
 
     if (existingAppointment) {
       return res.status(409).json({
@@ -689,7 +716,10 @@ app.put(
         appointment,
       });
     } catch (error) {
-      console.error("Cancel Appointment Error:", error);
+      console.error(
+        "Cancel Appointment Error:",
+        error
+      );
 
       res.status(500).json({
         success: false,
