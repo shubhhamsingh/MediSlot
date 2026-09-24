@@ -1,59 +1,44 @@
-```javascript
 const express = require("express");
-const mongoose = require("mongoose");
 const cors = require("cors");
+const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+require("dotenv").config();
+
+const User = require("./models/User");
 
 const app = express();
 
+// ==========================================
+// CONFIGURATION
+// ==========================================
+
 const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI;
+
 const JWT_SECRET =
-  process.env.JWT_SECRET || "MediSlot_SuperSecret_2026_ChangeMe_8472";
+  process.env.JWT_SECRET ||
+  "MediSlot_SuperSecret_2026_ChangeMe_8472";
 
-/* =========================
-   CORS
-========================= */
-
-const allowedOrigins = [
-  "https://medi-slot-mu.vercel.app",
-];
+// ==========================================
+// MIDDLEWARE
+// ==========================================
 
 app.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      if (
-        origin.startsWith("http://localhost:") ||
-        origin.startsWith("http://127.0.0.1:")
-      ) {
-        return callback(null, true);
-      }
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(null, false);
-    },
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: false,
   })
 );
 
 app.use(express.json());
 
-/* =========================
-   MONGODB
-========================= */
+// ==========================================
+// MONGODB
+// ==========================================
 
 mongoose
-  .connect(MONGODB_URI)
+  .connect(process.env.MONGODB_URI)
   .then(() => {
     console.log("MongoDB Connected Successfully");
   })
@@ -61,41 +46,63 @@ mongoose
     console.error("MongoDB Connection Error:", error.message);
   });
 
-/* =========================
-   USER MODEL
-========================= */
+// ==========================================
+// DOCTORS
+// ==========================================
 
-const userSchema = new mongoose.Schema(
+const doctors = [
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
-
-    password: {
-      type: String,
-      required: true,
-    },
+    id: 1,
+    name: "Dr. Ananya Sharma",
+    specialty: "General Physician",
+    experience: "8+ Years",
+    rating: 4.9,
+    fee: 500,
   },
   {
-    timestamps: true,
-  }
-);
+    id: 2,
+    name: "Dr. Rahul Mehta",
+    specialty: "Dermatologist",
+    experience: "10+ Years",
+    rating: 4.8,
+    fee: 700,
+  },
+  {
+    id: 3,
+    name: "Dr. Arjun Kapoor",
+    specialty: "Cardiologist",
+    experience: "12+ Years",
+    rating: 4.9,
+    fee: 900,
+  },
+];
 
-const User = mongoose.model("User", userSchema);
+// ==========================================
+// TIME SLOTS
+// ==========================================
 
-/* =========================
-   APPOINTMENT MODEL
-========================= */
+const timeSlots = [
+  "09:00 AM",
+  "09:30 AM",
+  "10:00 AM",
+  "10:30 AM",
+  "11:00 AM",
+  "11:30 AM",
+  "12:00 PM",
+  "12:30 PM",
+  "02:00 PM",
+  "02:30 PM",
+  "03:00 PM",
+  "03:30 PM",
+  "04:00 PM",
+  "04:30 PM",
+  "05:00 PM",
+  "05:30 PM",
+];
+
+// ==========================================
+// APPOINTMENT MODEL
+// ==========================================
 
 const appointmentSchema = new mongoose.Schema(
   {
@@ -108,20 +115,29 @@ const appointmentSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      trim: true,
       lowercase: true,
+      trim: true,
+    },
+
+    phone: {
+      type: String,
+      required: true,
+      trim: true,
     },
 
     doctor: {
       type: String,
       required: true,
-      trim: true,
+    },
+
+    doctorId: {
+      type: Number,
+      required: true,
     },
 
     specialty: {
       type: String,
       required: true,
-      trim: true,
     },
 
     date: {
@@ -134,13 +150,42 @@ const appointmentSchema = new mongoose.Schema(
       required: true,
     },
 
-    fee: {
-      type: Number,
-      default: 0,
+    reason: {
+      type: String,
+      default: "",
+    },
+
+    status: {
+      type: String,
+      enum: [
+        "Pending",
+        "Confirmed",
+        "Completed",
+        "Cancelled",
+      ],
+      default: "Pending",
+    },
+
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
     },
   },
   {
     timestamps: true,
+  }
+);
+
+appointmentSchema.index(
+  {
+    email: 1,
+    doctorId: 1,
+    date: 1,
+    time: 1,
+  },
+  {
+    unique: true,
   }
 );
 
@@ -149,9 +194,61 @@ const Appointment = mongoose.model(
   appointmentSchema
 );
 
-/* =========================
-   HOME / HEALTH CHECK
-========================= */
+// ==========================================
+// AUTH MIDDLEWARE
+// ==========================================
+
+const authenticateToken = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: "Authorization token required",
+      });
+    }
+
+    const parts = authHeader.split(" ");
+
+    if (parts.length !== 2 || parts[0] !== "Bearer") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid authorization format",
+      });
+    }
+
+    const token = parts[1];
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    const user = await User.findById(decoded.userId).select(
+      "-password"
+    );
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    req.user = user;
+
+    next();
+  } catch (error) {
+    console.error("Authentication Error:", error.message);
+
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token",
+    });
+  }
+};
+
+// ==========================================
+// HOME
+// ==========================================
 
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -162,9 +259,9 @@ app.get("/", (req, res) => {
   });
 });
 
-/* =========================
-   REGISTER
-========================= */
+// ==========================================
+// REGISTER
+// ==========================================
 
 app.post("/api/auth/register", async (req, res) => {
   try {
@@ -184,7 +281,7 @@ app.post("/api/auth/register", async (req, res) => {
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = email.toLowerCase().trim();
 
     const existingUser = await User.findOne({
       email: normalizedEmail,
@@ -197,20 +294,19 @@ app.post("/api/auth/register", async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
-    const user = new User({
+    const user = await User.create({
       name: name.trim(),
       email: normalizedEmail,
       password: hashedPassword,
+      role: "patient",
     });
-
-    await user.save();
 
     const token = jwt.sign(
       {
-        id: user._id.toString(),
-        email: user.email,
+        userId: user._id.toString(),
+        role: user.role,
       },
       JWT_SECRET,
       {
@@ -226,10 +322,11 @@ app.post("/api/auth/register", async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        role: user.role,
       },
     });
   } catch (error) {
-    console.error("REGISTER ERROR:", error);
+    console.error("Registration Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -239,9 +336,9 @@ app.post("/api/auth/register", async (req, res) => {
   }
 });
 
-/* =========================
-   LOGIN
-========================= */
+// ==========================================
+// LOGIN
+// ==========================================
 
 app.post("/api/auth/login", async (req, res) => {
   try {
@@ -254,7 +351,7 @@ app.post("/api/auth/login", async (req, res) => {
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = email.toLowerCase().trim();
 
     const user = await User.findOne({
       email: normalizedEmail,
@@ -281,8 +378,8 @@ app.post("/api/auth/login", async (req, res) => {
 
     const token = jwt.sign(
       {
-        id: user._id.toString(),
-        email: user.email,
+        userId: user._id.toString(),
+        role: user.role,
       },
       JWT_SECRET,
       {
@@ -298,10 +395,11 @@ app.post("/api/auth/login", async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        role: user.role,
       },
     });
   } catch (error) {
-    console.error("LOGIN ERROR:", error);
+    console.error("Login Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -311,62 +409,163 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-/* =========================
-   BOOK APPOINTMENT
-========================= */
+// ==========================================
+// GET DOCTORS
+// ==========================================
 
-app.post("/book", async (req, res) => {
+app.get("/api/doctors", (req, res) => {
+  res.status(200).json({
+    success: true,
+    doctors,
+  });
+});
+
+// ==========================================
+// GET ONE DOCTOR
+// ==========================================
+
+app.get("/api/doctors/:doctorId", (req, res) => {
+  const doctorId = Number(req.params.doctorId);
+
+  const doctor = doctors.find(
+    (item) => item.id === doctorId
+  );
+
+  if (!doctor) {
+    return res.status(404).json({
+      success: false,
+      message: "Doctor not found",
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    doctor,
+  });
+});
+
+// ==========================================
+// AVAILABILITY
+// ==========================================
+
+app.get("/api/availability", async (req, res) => {
+  try {
+    const { doctorId, date } = req.query;
+
+    if (!doctorId || !date) {
+      return res.status(400).json({
+        success: false,
+        message: "doctorId and date are required",
+      });
+    }
+
+    const appointments = await Appointment.find({
+      doctorId: Number(doctorId),
+      date,
+      status: {
+        $ne: "Cancelled",
+      },
+    }).select("time");
+
+    const bookedSlots = appointments.map(
+      (appointment) => appointment.time
+    );
+
+    const availableSlots = timeSlots.filter(
+      (slot) => !bookedSlots.includes(slot)
+    );
+
+    res.status(200).json({
+      success: true,
+      date,
+      doctorId: Number(doctorId),
+      bookedSlots,
+      availableSlots,
+    });
+  } catch (error) {
+    console.error("Availability Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Unable to fetch availability",
+    });
+  }
+});
+
+// ==========================================
+// BOOK APPOINTMENT
+// ==========================================
+
+app.post("/book", authenticateToken, async (req, res) => {
   try {
     const {
       name,
       email,
+      phone,
       doctor,
+      doctorId,
       specialty,
       date,
       time,
-      fee,
+      reason,
     } = req.body;
 
     if (
       !name ||
       !email ||
+      !phone ||
       !doctor ||
+      !doctorId ||
       !specialty ||
       !date ||
       !time
     ) {
       return res.status(400).json({
         success: false,
-        message: "All appointment fields are required",
+        message: "All appointment details are required",
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const doctorExists = doctors.find(
+      (item) => item.id === Number(doctorId)
+    );
+
+    if (!doctorExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
+    }
 
     const existingAppointment = await Appointment.findOne({
-      doctor,
+      doctorId: Number(doctorId),
       date,
       time,
+      status: {
+        $ne: "Cancelled",
+      },
     });
 
     if (existingAppointment) {
       return res.status(409).json({
         success: false,
-        message: "This appointment slot is already booked",
+        message: "This time slot is already booked",
       });
     }
 
-    const appointment = new Appointment({
+    const appointment = await Appointment.create({
       name: name.trim(),
-      email: normalizedEmail,
-      doctor: doctor.trim(),
-      specialty: specialty.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone.trim(),
+      doctor,
+      doctorId: Number(doctorId),
+      specialty,
       date,
       time,
-      fee: Number(fee) || 0,
+      reason: reason || "",
+      status: "Pending",
+      userId: req.user._id,
     });
-
-    await appointment.save();
 
     return res.status(201).json({
       success: true,
@@ -374,7 +573,14 @@ app.post("/book", async (req, res) => {
       appointment,
     });
   } catch (error) {
-    console.error("BOOKING ERROR:", error);
+    console.error("Booking Error:", error);
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "This appointment slot is already booked",
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -384,120 +590,145 @@ app.post("/book", async (req, res) => {
   }
 });
 
-/* =========================
-   GET ALL APPOINTMENTS
-========================= */
+// ==========================================
+// MY APPOINTMENTS
+// ==========================================
 
-app.get("/appointments", async (req, res) => {
-  try {
-    const appointments = await Appointment.find().sort({
-      createdAt: -1,
-    });
+app.get(
+  "/api/my-appointments",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const appointments = await Appointment.find({
+        userId: req.user._id,
+      }).sort({
+        createdAt: -1,
+      });
 
-    return res.status(200).json({
-      success: true,
-      appointments,
-    });
-  } catch (error) {
-    console.error("GET APPOINTMENTS ERROR:", error);
+      res.status(200).json({
+        success: true,
+        appointments,
+      });
+    } catch (error) {
+      console.error("My Appointments Error:", error);
 
-    return res.status(500).json({
-      success: false,
-      message: "Unable to fetch appointments",
-    });
-  }
-});
-
-/* =========================
-   GET APPOINTMENTS BY EMAIL
-========================= */
-
-app.get("/appointments/:email", async (req, res) => {
-  try {
-    const email = req.params.email.trim().toLowerCase();
-
-    const appointments = await Appointment.find({
-      email,
-    }).sort({
-      createdAt: -1,
-    });
-
-    return res.status(200).json({
-      success: true,
-      appointments,
-    });
-  } catch (error) {
-    console.error("GET USER APPOINTMENTS ERROR:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to fetch user appointments",
-    });
-  }
-});
-
-/* =========================
-   DELETE APPOINTMENT
-========================= */
-
-app.delete("/appointments/:id", async (req, res) => {
-  try {
-    const appointment = await Appointment.findByIdAndDelete(
-      req.params.id
-    );
-
-    if (!appointment) {
-      return res.status(404).json({
+      res.status(500).json({
         success: false,
-        message: "Appointment not found",
+        message: "Unable to fetch appointments",
       });
     }
-
-    return res.status(200).json({
-      success: true,
-      message: "Appointment cancelled successfully",
-    });
-  } catch (error) {
-    console.error("DELETE APPOINTMENT ERROR:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to cancel appointment",
-    });
   }
-});
+);
 
-/* =========================
-   404
-========================= */
+// ==========================================
+// ALL APPOINTMENTS
+// ==========================================
+
+app.get(
+  "/appointments",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const appointments = await Appointment.find().sort({
+        createdAt: -1,
+      });
+
+      res.status(200).json({
+        success: true,
+        appointments,
+      });
+    } catch (error) {
+      console.error("Appointments Error:", error);
+
+      res.status(500).json({
+        success: false,
+        message: "Unable to fetch appointments",
+      });
+    }
+  }
+);
+
+// ==========================================
+// CANCEL APPOINTMENT
+// ==========================================
+
+app.put(
+  "/api/appointments/:id/cancel",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const appointment = await Appointment.findById(
+        req.params.id
+      );
+
+      if (!appointment) {
+        return res.status(404).json({
+          success: false,
+          message: "Appointment not found",
+        });
+      }
+
+      if (
+        appointment.userId &&
+        appointment.userId.toString() !==
+          req.user._id.toString()
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "You cannot cancel this appointment",
+        });
+      }
+
+      appointment.status = "Cancelled";
+
+      await appointment.save();
+
+      res.status(200).json({
+        success: true,
+        message: "Appointment cancelled successfully",
+        appointment,
+      });
+    } catch (error) {
+      console.error("Cancel Appointment Error:", error);
+
+      res.status(500).json({
+        success: false,
+        message: "Unable to cancel appointment",
+      });
+    }
+  }
+);
+
+// ==========================================
+// 404
+// ==========================================
 
 app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: "Route not found",
-    route: req.originalUrl,
   });
 });
 
-/* =========================
-   GLOBAL ERROR HANDLER
-========================= */
+// ==========================================
+// GLOBAL ERROR
+// ==========================================
 
 app.use((error, req, res, next) => {
-  console.error("SERVER ERROR:", error);
+  console.error("Global Error:", error);
 
   res.status(500).json({
     success: false,
     message: "Internal server error",
-    error: error.message,
   });
 });
 
-/* =========================
-   START SERVER
-========================= */
+// ==========================================
+// START SERVER
+// ==========================================
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`MediSlot server running on port ${PORT}`);
+  console.log(
+    `MediSlot server running on port ${PORT}`
+  );
 });
-```
