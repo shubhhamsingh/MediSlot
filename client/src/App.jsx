@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-const API_URL = "https://medislot-imbs.onrender.com";
+const API_URL = "https://medislot-4w01.onrender.com";
 
 const doctors = [
   {
