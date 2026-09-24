@@ -63,7 +63,28 @@ app.post("/book", async (req, res) => {
   }
 });
 
-// Render provides its own PORT
+// Get all appointments
+app.get("/appointments", async (req, res) => {
+  try {
+    const appointments = await Appointment.find().sort({
+      createdAt: -1,
+    });
+
+    res.status(200).json({
+      success: true,
+      appointments,
+    });
+  } catch (error) {
+    console.error("Fetch Appointments Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch appointments",
+    });
+  }
+});
+
+// Server
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
